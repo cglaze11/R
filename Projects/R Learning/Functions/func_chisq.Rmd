@@ -1,0 +1,176 @@
+---
+title: "Chisq Test Function"
+author: "Xinlong Yang"
+date: "2022/11/1"
+output: 
+  html_document: 
+    toc: yes
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+## Chisq Test
+
+This is a document that records the whole process of the function:func_chisq.
+The following is the full code of chisq-test.
+
+<details>
+  <summary><b>Chisq Test Function Code</b></summary>
+```{r myfunction}
+my_chisq <- function(x){
+  # input:
+  # x:a matrix
+  n.row <- nrow(x)
+  n.col <- ncol(x)
+  df <- (n.row-1)*(n.col-1)
+  # the sum of row
+  r <- tibble()
+  # the sum of col
+  c <- tibble()
+  
+  for (i in 1:n.row ) {
+    r[1,i] <- sum(x[i,1:n.col])
+  }
+  for (i in 1:n.col ) {
+    c[1,i] <- sum(x[1:n.row,i])
+  }
+  total <- sum(x)
+  
+  # 2×2 tables
+  if (n.row==2 & n.col==2) {
+    stat <- ((abs(x[1,1]*x[2,2]-x[1,2]*x[2,1])-total/2)**2*total/(r[1,1]*r[1,2]*c[1,1]*c[1,2]))[1,1]
+  }
+  # 2×c tables
+  else if(n.row==2 & n.col>=3) {
+    oc <- tibble()
+    for (j in 1:n.col){
+      oc[1,j] <- x[1,j]**2/c[1,j]
+    }
+    stat <- ((total**2/r[1,1]/r[1,2])*(sum(oc)-r[1,1]**2/total))[1,1]
+  }
+  # r×c tables
+  else if (n.row>=2 & n.col>=3) {
+    orc <- tibble()
+    for (i in 1:n.row){
+      for (j in 1:n.col){
+        orc[i,j] <- x[i,j]**2/r[1,i]/c[1,j]
+      }
+    }
+    stat <- total*(sum(orc)-1)
+  }
+
+  p.value <- 1 - pchisq(stat, df=df, ncp=0, log = FALSE)
+  # result <- list(stat=stat,pvalue=p.value)
+  result <- c(stat,p.value)
+  return(result)
+}
+```
+</details>
+
+## Validation Case
+
+### Case 1
+
+This is for 2×2 tables.
+
+The formula of Chisq Statistics for 2×2 contingency tables:
+
+<p style="text-align: center;">$\chi 2 = \frac{(|O_{11}O_{22}-O_{12}O_{21}|-\frac{T}{2})^{2}T}{R_{1}R_{2}C_{1}C_{2}}$</p>
+
+The Validation Data:
+```{r, echo=FALSE}
+m <- as.table(rbind(c(50, 250), c(5, 195)))
+dimnames(m) <- list(gender = c("F", "M"),
+                    party = c("Democrat","Independent"))
+m
+```
+
+The statistics and P value:
+
+```{r, echo=FALSE}
+my_chisq(m)
+```
+
+### Case 2
+
+This is for 2×c tables(c>=3).
+
+The formula of Chisq Statistics for 2×c contingency tables:
+
+<p style="text-align: center;">$\chi 2 = \frac{T^{2}}{R_{1}R_{2}}[\sum (\frac{O_{1j}^{2}}{C_{j}})-\frac{R_{1}^{2}}{T}]$</p>
+
+The Validation Data:
+```{r, echo=FALSE}
+m1 <- as.table(rbind(c(37,49,23), c(150,100,57)))
+dimnames(m1) <- list(gender = c("F", "M"),party = c("Democrat","Independent","Others"))
+m1
+```
+
+The statistics and P value:
+
+```{r, echo=FALSE}
+my_chisq(m1)
+```
+
+### Case 3
+
+This is for r×c tables(r>+3 and c>=3).
+
+The formula of Chisq Statistics for r×c contingency tables:
+
+<p style="text-align: center;">$\chi 2 = T[\sum (\frac{O_{ij}^{2}}{R_{i}C_{j}}-1)]$</p>
+
+The Validation Data:
+```{r, echo=FALSE}
+m2 <- as.table(rbind(c(67,9,10,5), c(32,23,20,4),c(10,11,23,5)))
+dimnames(m2) <- list(gender = c("F", "M","O"),
+                     party = c("Democrat","Independent","Others","None"))
+m2
+```
+
+The statistics and P value:
+
+```{r, echo=FALSE}
+my_chisq(m2)
+```
+
+## Some Problems
+
+### Data Structure of Statistics
+
+object:(r c total) are the common objects used in three cases.
+
+```{r,eval = FALSE}
+  r <- tibble()
+  c <- tibble()
+  
+  for (i in 1:n.row ) {
+    r[1,i] <- sum(x[i,1:n.col])
+  }
+  for (i in 1:n.col ) {
+    c[1,i] <- sum(x[1:n.row,i])
+  }
+  total <- sum(x)
+```
+
+the code of computing chisq statistics:
+
+Object x is a matrix.
+
+```{r,eval = FALSE}
+# this is matrix manipulation and the result is also a matrix that can't be used directly to argument in function:pchisq
+stat <- ((abs(x[1,1]*x[2,2]-x[1,2]*x[2,1])-total/2)**2*total/(r[1,1]*r[1,2]*c[1,1]*c[1,2]))[1,1]
+# like above
+stat <- ((total**2/r[1,1]/r[1,2])*(sum(oc)-r[1,1]**2/total))[1,1]
+# this is a vector manipulation
+stat <- total*(sum(orc)-1)
+```
+
+The chisq statistics entered into Function:pchisq must be a vector.
+
+Use <b>as.vector()</b> to change a matrix to a vector.
+
+

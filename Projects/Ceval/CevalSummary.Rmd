@@ -1,0 +1,120 @@
+---
+title: "CevalSumary"
+author: "Xinlong Yang"
+date: "2022/11/4"
+output: 
+  html_document: 
+    toc: yes
+---
+
+## Setup
+
+```{r setup, results = "hide",message = FALSE,warning = FALSE}
+library(tidyverse) #the core packages
+library(rstatix)  #in this package t_test can use pipe
+library(berryFunctions) # add null rows to a data frame
+```
+
+## Import data from .rds
+
+Use **read_rds()** to import data into the session.
+
+```{r,importdata,results = "hide"}
+bayer <- read_rds("/home/xinlong.yang/Projects/Ceval/Datasets/bayer.rds")
+ceval <- read_rds("/home/xinlong.yang/Projects/Ceval/Datasets/ceval.rds")
+```
+
+If you want to import the sas froamt data,must use function: **read_sas** in the package:**haven**.   
+
+```{r,eval = FALSE}
+data <- read_sas(file="")
+```
+
+## Tidy data
+
+Before analyzing data,Tiding and manipulating are the core phase which make process smoothly.  
+
+```{r}
+# filter the part you need
+vstall <- bayer %>% filter(ANATYPE=="原始数据") %>% 
+  # due to analyze the result of different visit,
+  #     adding a variable about visit is nessesary
+  cbind(visitn=1) 
+```
+
+Codes above show how to filter rows,and insert new variables to a data frame.   
+With pipe **%>%**,can omit the input data argument in most functions.
+
+Below will show how to modify values of data frame.   
+According rule about judging visit,modifying visit values.
+
+```{r}
+vst <- vstall
+vst$visitn[vst$CGMTM <= 1440] <- 2  # 1 day
+vst$visitn[vst$CGMTM <= 7200 & vst$CGMTM > 1440] <- 3  # 5 day
+vst$visitn[vst$CGMTM <= 14400 & vst$CGMTM > 7200] <- 4 # 10 day
+vst$visitn[vst$CGMTM <= 21600 & vst$CGMTM > 14400] <- 5  # 15 day
+```
+
+But it's a little complex.How to simplify?
+
+```{r}
+vst$visitn <- as.integer(cut(vst$CGMTM, breaks=c(0,1440,7200,14400,21600),labels=c(2,3,4,5)))+1
+```
+
+Function cut() can be used to simplify the assignment procedure.   Why modifying with adding 1?   
+
+as the output below,cut() returns the factor level defined in argument:labels=c().    
+When converting to int, the result will be turned to the simple integer codes related to the sequence of the factors.   
+So use another vector to adjust the visit number.
+
+```{r}
+test <- c(1320,3000)
+cut(test, breaks=c(0,1440,7200,14400,21600),labels=c(2,3,4,5))
+as.integer(cut(test, breaks=c(0,1440,7200,14400,21600),labels=c(2,3,4,5)))
+as.integer(cut(test, breaks=c(0,1440,7200,14400,21600),labels=c(2,3,4,5)))+1
+```
+
+Then assign the stratified variable.
+
+```{r}
+st <- rbind(
+  vstall,
+  vst
+)
+
+# index stra fro YSI or CGM
+st2 <- rbind(
+  mutate(st,stvar=st$YSIRES,stra=1),
+  mutate(st,stvar=st$CGMRES,stra=2)
+)
+```
+
+## Perform analysis
+
+```{r,message = FALSE}
+# grouped summarise
+mean <- st2 %>% 
+  group_by(visitn,stra,CGMLOCN) %>% 
+  summarise(
+    cnt=format(n(),digits = 0, nsmall = 0),
+    mean = format(mean(stvar, na.rm = TRUE),digits = 2, nsmall = 2),
+    median=format(median(stvar, na.rm = TRUE),digits = 2, nsmall = 2),
+    std=format(sd(stvar, na.rm = TRUE),digits = 3, nsmall = 3),
+    min=format(min(stvar),digits = 1, nsmall = 1),
+    max=format(max(stvar),digits = 1, nsmall = 1),
+    q1=format(quantile(stvar,probs=c(0.25),na.rm=TRUE,type=2),digits = 2, nsmall = 2),
+    q3=format(quantile(stvar,probs=c(0.75),na.rm=TRUE,type=2),digits = 2, nsmall = 2),
+    
+    mnstd=paste(c(mean,'(',std,")"),sep = "",collapse = ""),
+    q13=paste(c(q1,',',q3),sep = "",collapse = ""),
+    ext=paste(c(min,',',max),sep = "",collapse = "")
+  ) 
+
+# transpose mean
+rst <- mean %>% 
+  group_by(visitn,stra) %>% 
+  pivot_longer(c("cnt","mnstd","median","q13","ext"), names_to = "para", values_to = "value") %>% 
+  select(-(mean:q3)) 
+```
+
